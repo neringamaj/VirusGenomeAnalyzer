@@ -2,6 +2,8 @@ from collections import defaultdict
 from Bio import SeqIO
 from Bio.Seq import Seq
 import math
+import numpy as np
+
 
 codons = {
     "ATA":"I", "ATC":"I", "ATT":"I", "ATG":"M",
@@ -56,29 +58,41 @@ def compute_codon_dicodon_frequencies(sequence):
     dicodon_freq = defaultdict(int)
     for i in range(0, len(sequence) - 2, 3):
         codon = sequence[i:i+3]
-        codon_freq[codon] += 1
+        if codon in codons:  # Ensure the codon exists in our dictionary
+            codon_freq[codon] += 1
         if i + 6 <= len(sequence):
             dicodon = sequence[i:i+6]
             dicodon_freq[dicodon] += 1
     return codon_freq, dicodon_freq
 
+# Determine variance across sequences
+def variance_across_sequences(sequences, n):
+    all_freqs = defaultdict(list)
+    
+    # Get frequencies for each sequence
+    for seq in sequences:
+        codon_freq, dicodon_freq = compute_codon_dicodon_frequencies(seq)
+        if n == 3:
+            freq = codon_freq
+        else:
+            freq = dicodon_freq
+        
+        for codon, count in freq.items():
+            all_freqs[codon].append(count)
+    
+    # Calculate variance for each codon/dicodon
+    variances = {}
+    for codon, counts in all_freqs.items():
+        variances[codon] = np.var(counts)
+
+    # Sort by variance
+    sorted_variances = sorted(variances.items(), key=lambda x: x[1], reverse=True)
+    return sorted_variances
+
 def compute_euclidean_distance(freq1, freq2):
     keys = set(freq1.keys()).union(set(freq2.keys()))
     distance = sum([(freq1[k] - freq2[k])**2 for k in keys])
     return math.sqrt(distance)
-
-def compute_distance_matrix(sequences, use_dicodon=False):
-    precomputed_freqs = [compute_codon_dicodon_frequencies(seq) for seq in sequences]
-    
-    matrix = []
-    for i in enumerate(sequences):
-        row = []
-        for j in enumerate(sequences):
-            freq1 = precomputed_freqs[i][1 if use_dicodon else 0]
-            freq2 = precomputed_freqs[j][1 if use_dicodon else 0]
-            row.append(compute_euclidean_distance(freq1, freq2))
-        matrix.append(row)
-    return matrix
 
 def compute_distance_matrix(sequences, use_dicodon=False):
     sequences = [seq for seq in sequences if len(seq) >= 100]
@@ -119,6 +133,13 @@ for file_name in file_names:
 
 codon_distance_matrix = compute_distance_matrix(all_sequences)
 dicodon_distance_matrix = compute_distance_matrix(all_sequences, use_dicodon=True)
+
+
+codon_variances = variance_across_sequences(all_sequences, 3)
+dicodon_variances = variance_across_sequences(all_sequences, 6)
+
+print("Codons with the most variation:", codon_variances[:5])
+print("Dicodons with the most variation:", dicodon_variances[:5])
 
 codon_phylip_output = format_phylip(codon_distance_matrix, names)
 dicodon_phylip_output = format_phylip(dicodon_distance_matrix, names)
